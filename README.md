@@ -66,13 +66,15 @@ This iterative loop is known as **ReAct (Reason + Act)**.
 ```
 
 ### 1. Tools (The Effectors)
-Regular Python function in [`main.py`](file:///d:/dev/arena/main.py#L37-L135):
-- `duckduckgo_search(query)`: Free web and instant answer search to find downtown venues, patios, reviews, and outdoor seating. Zero API key needed.
+Regular Python functions in [`main.py`](file:///d:/dev/arena/main.py#L38-L150):
+- `get_weather(city)`: Real-time global weather from Open-Meteo REST API (free, no key required).
+- `get_wikipedia_summary(topic)`: Instant encyclopedic summaries from Wikipedia REST API (free, no key required).
+- `calculate(expression)`: Safe math and unit conversion evaluation.
 
 ### 2. Tool Schemas (The Contract)
-Standard JSON schemas in [`main.py`](file:///d:/dev/arena/main.py#L140-L170) telling Groq:
-- What search capabilities exist.
-- What query arguments and formats are expected.
+Standard JSON schemas in [`main.py`](file:///d:/dev/arena/main.py#L160-L225) telling Groq:
+- What tool functions exist.
+- What parameter arguments and types are expected.
 
 ### 3. Agent State & Memory (The Context)
 The agent's working memory is simply a Python list:

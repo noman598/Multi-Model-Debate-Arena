@@ -7,7 +7,7 @@ This file is designed for learning the core fundamentals of AI Agents.
 No LangChain or framework bloat. Just pure Python + Groq LPU inference.
 
 An AI Agent consists of 5 fundamental components:
-  1. TOOLS: Plain Python functions that perform actions or retrieve data.
+  1. TOOLS: Plain Python functions that perform actions or call real APIs.
   2. TOOL SCHEMAS: JSON schemas telling the LLM what tools exist and their arguments.
   3. STATE & MEMORY: A message list tracking conversation and tool execution history.
   4. THE ReAct LOOP (Reason + Act):
@@ -19,122 +19,126 @@ An AI Agent consists of 5 fundamental components:
 =============================================================================
 """
 
-import html
 import json
 import os
-import re
-from typing import Any, Dict, List
+import urllib.parse
+from typing import Any, Dict, List, Optional
 from dotenv import load_dotenv
-from groq import Groq
 import httpx
+from groq import Groq, BadRequestError
 
 # Load environment variables (GROQ_API_KEY, GROQ_MODEL, etc.)
 load_dotenv()
 
 
 # =============================================================================
-# 1. TOOLS: Real actions the agent can perform in the environment
+# 1. TOOLS: Real, free, lightweight REST APIs via httpx
 # =============================================================================
 
-def duckduckgo_search(query: str) -> str:
+def get_weather(city: str) -> str:
     """
-    Search DuckDuckGo using the free Instant Answer API with web search fallback.
-    Completely free, no API key required.
+    Get live, real-time weather for any city using Open-Meteo.
+    Completely free, no API key required, instant JSON response.
     """
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/124.0.0.0 Safari/537.36"
-        )
-    }
-
-    results = []
-
-    # 1. Primary: DuckDuckGo Instant Answer API (Free, JSON)
     try:
-        with httpx.Client(timeout=10.0, follow_redirects=True, headers=headers) as client:
-            resp = client.get(
-                "https://api.duckduckgo.com/",
-                params={
-                    "q": query,
-                    "format": "json",
-                    "no_html": "1",
-                    "skip_disambig": "0",
-                },
+        with httpx.Client(timeout=8.0) as client:
+            # Step 1: Geocode the city name to latitude and longitude
+            geo_url = (
+                f"https://geocoding-api.open-meteo.com/v1/search?"
+                f"name={urllib.parse.quote(city)}&count=1&language=en&format=json"
             )
-            if resp.status_code == 200:
-                data = resp.json()
-                abstract = data.get("AbstractText", "").strip()
-                if abstract:
-                    results.append(
-                        f"Instant Answer: {abstract} (Source: {data.get('AbstractURL', '')})"
-                    )
+            geo_resp = client.get(geo_url)
+            geo_resp.raise_for_status()
+            geo_data = geo_resp.json()
 
-                # Collect related topics if available
-                for topic in data.get("RelatedTopics", []):
-                    if isinstance(topic, dict):
-                        if topic.get("Text"):
-                            results.append(f"- {topic['Text']} ({topic.get('FirstURL', '')})")
-                        elif "Topics" in topic:
-                            for subtopic in topic["Topics"][:2]:
-                                if subtopic.get("Text"):
-                                    results.append(f"- {subtopic['Text']} ({subtopic.get('FirstURL', '')})")
-                    if len(results) >= 4:
-                        break
-    except Exception:
-        pass
+            results = geo_data.get("results")
+            if not results:
+                return f"Could not find coordinates for city: '{city}'"
 
-    # If the Instant Answer API returned solid answers, return them
-    if results:
-        return "\n".join(results[:5])
+            location = results[0]
+            name = location.get("name", city)
+            country = location.get("country", "")
+            lat = location.get("latitude")
+            lon = location.get("longitude")
 
-    # 2. Web search fallback via DuckDuckGo Lite (Free, no API key, reliable for local/dining searches)
+            # Step 2: Fetch current weather metrics
+            weather_url = (
+                f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}"
+                f"&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,wind_speed_10m"
+                f"&temperature_unit=celsius&wind_speed_unit=kmh"
+            )
+            w_resp = client.get(weather_url)
+            w_resp.raise_for_status()
+            w_data = w_resp.json()
+            current = w_data.get("current", {})
+
+            temp = current.get("temperature_2m")
+            feels_like = current.get("apparent_temperature")
+            humidity = current.get("relative_humidity_2m")
+            wind = current.get("wind_speed_10m")
+
+            return (
+                f"Live Weather in {name}, {country}:\n"
+                f"- Temperature: {temp}°C (feels like {feels_like}°C)\n"
+                f"- Humidity: {humidity}%\n"
+                f"- Wind Speed: {wind} km/h"
+            )
+
+    except Exception as err:
+        return f"Weather API error: {err}"
+
+
+def get_wikipedia_summary(topic: str) -> str:
+    """
+    Get a quick factual summary from Wikipedia about any topic, place, person, or landmark.
+    Completely free, no API key required, official Wikipedia REST API.
+    """
     try:
-        with httpx.Client(timeout=10.0, follow_redirects=True, headers=headers) as client:
-            resp = client.post(
-                "https://lite.duckduckgo.com/lite/",
-                data={"q": query},
-            )
-            if resp.status_code == 200:
-                html_text = resp.text
+        formatted_topic = urllib.parse.quote(topic.strip().replace(" ", "_"))
+        url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{formatted_topic}"
+        headers = {"User-Agent": "AgentDemo/1.0 (educational-agent-bot)"}
 
-                link_pattern = re.compile(
-                    r"<a[^>]+class=[\"']result-link[\"'][^>]*href=[\"'](?P<url>[^\"']+)[\"'][^>]*>(?P<title>.*?)</a>",
-                    re.DOTALL | re.IGNORECASE,
-                )
-                snippet_pattern = re.compile(
-                    r"<td[^>]+class=[\"']result-snippet[\"'][^>]*>(?P<snippet>.*?)</td>",
-                    re.DOTALL | re.IGNORECASE,
-                )
+        with httpx.Client(timeout=8.0, headers=headers, follow_redirects=True) as client:
+            resp = client.get(url)
+            if resp.status_code == 404:
+                return f"No Wikipedia article found for '{topic}'."
+            resp.raise_for_status()
+            data = resp.json()
 
-                links = link_pattern.findall(html_text)
-                snippets = snippet_pattern.findall(html_text)
+            title = data.get("title", topic)
+            description = data.get("description", "")
+            extract = data.get("extract", "")
 
-                web_results = []
-                for i in range(min(5, len(links))):
-                    url, raw_title = links[i]
-                    title = re.sub(r"<[^>]+>", "", raw_title).strip()
-                    title = html.unescape(title)
+            desc_line = f" ({description})" if description else ""
+            return f"Wikipedia: {title}{desc_line}\n\n{extract}"
 
-                    snippet = ""
-                    if i < len(snippets):
-                        snippet = re.sub(r"<[^>]+>", "", snippets[i]).strip()
-                        snippet = html.unescape(snippet)
+    except Exception as err:
+        return f"Wikipedia API error: {err}"
 
-                    web_results.append(f"[{i+1}] {title}\n    Details: {snippet}\n    Link: {url}")
 
-                if web_results:
-                    return "\n\n".join(web_results)
-    except Exception as e:
-        return f"Search error: {e}"
+def calculate(expression: str) -> str:
+    """
+    Safely evaluate a mathematical expression or unit conversion.
+    Examples: '25 * 9/5 + 32', '150 * 0.18', '(450 / 4)'.
+    """
+    try:
+        # Security: Allow only numbers and basic mathematical operators
+        allowed_chars = set("0123456789+-*/().,% ")
+        if not all(char in allowed_chars for char in expression):
+            return "Error: Expression contains unsupported characters. Only basic arithmetic (+, -, *, /, %) is allowed."
 
-    return f"No results found on DuckDuckGo for query: '{query}'"
+        result = eval(expression, {"__builtins__": None}, {})
+        return f"{expression} = {result}"
+
+    except Exception as err:
+        return f"Calculation error: {err}"
 
 
 # Dispatch table: maps tool names from LLM to actual Python functions
 TOOL_MAP = {
-    "duckduckgo_search": duckduckgo_search,
+    "get_weather": get_weather,
+    "get_wikipedia_summary": get_wikipedia_summary,
+    "calculate": calculate,
 }
 
 
@@ -146,27 +150,54 @@ TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
-            "name": "duckduckgo_search",
-            "description": (
-                "Search the web using DuckDuckGo. Use this to find places, restaurants, "
-                "outdoor seating, patio dining, reviews, ratings, and recommendations near downtown."
-            ),
+            "name": "get_weather",
+            "description": "Get current real-time live weather for any city in the world (temperature, humidity, wind).",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {
+                    "city": {
                         "type": "string",
-                        "description": (
-                            "The search query. For local searches, be specific, e.g., "
-                            "'restaurants downtown Seattle outdoor seating great reviews' or "
-                            "'best patios downtown Austin reviews'"
-                        ),
+                        "description": "The name of the city, e.g. 'Chicago', 'Tokyo', 'London', 'Austin'.",
                     }
                 },
-                "required": ["query"],
+                "required": ["city"],
             },
         },
-    }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_wikipedia_summary",
+            "description": "Look up factual summaries, history, or background on any landmark, city, person, or concept.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "topic": {
+                        "type": "string",
+                        "description": "The landmark, place, person, or concept to look up, e.g. 'Millennium Park', 'Eiffel Tower', 'Chicago'.",
+                    }
+                },
+                "required": ["topic"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "calculate",
+            "description": "Evaluate mathematical expressions or conversions (e.g. Celsius to Fahrenheit, tip percentages, price splits).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "expression": {
+                        "type": "string",
+                        "description": "The mathematical expression to evaluate, e.g. '18.5 * 9/5 + 32' or '120 * 0.18'.",
+                    }
+                },
+                "required": ["expression"],
+            },
+        },
+    },
 ]
 
 
@@ -176,7 +207,7 @@ TOOL_SCHEMAS = [
 
 class SimpleAgent:
     """
-    A minimal, framework-free AI Agent using Groq.
+    A minimal, framework-free AI Agent using Groq and lightweight API tools.
     """
 
     def __init__(self, client: Groq, model: str = "openai/gpt-oss-120b"):
@@ -187,13 +218,15 @@ class SimpleAgent:
             {
                 "role": "system",
                 "content": (
-                    "You are an expert local guide and dining concierge. "
-                    "Your specialty is finding places near downtown areas that feature outdoor seating, "
-                    "patio dining, and outstanding customer reviews. "
-                    "Whenever the user asks for recommendations, use the duckduckgo_search tool to look up "
-                    "real venues, check reviews, and verify outdoor seating amenities. "
-                    "In your response, provide clear place names, outdoor seating highlights (e.g. heated patio, garden, rooftop), "
-                    "what reviewers praise most, and why it fits their request."
+                    "You are a helpful and versatile AI Assistant with access to real tools.\n\n"
+                    "Available Tools:\n"
+                    "1. `get_weather(city)`: Fetch live current weather for any city worldwide.\n"
+                    "2. `get_wikipedia_summary(topic)`: Look up verified factual overviews for places, landmarks, or people.\n"
+                    "3. `calculate(expression)`: Perform math calculations or unit conversions.\n\n"
+                    "Guidelines:\n"
+                    "- When the user asks about weather, places, landmarks, or math, call the appropriate tool.\n"
+                    "- Only call the tools listed above. Do not invent undeclared tools.\n"
+                    "- Synthesize observations into a clear, direct, and pleasant response for the user."
                 ),
             }
         ]
@@ -215,12 +248,31 @@ class SimpleAgent:
             print(f"\n[Step {step}] Asking Groq ({self.model})...")
 
             # 1. Reason: Call Groq with current history and available tools
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=self.messages,
-                tools=TOOL_SCHEMAS,
-                tool_choice="auto",
-            )
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=self.messages,
+                    tools=TOOL_SCHEMAS,
+                    tool_choice="auto",
+                )
+            except BadRequestError as err:
+                # If the model attempted an unsupported tool or format error, fallback cleanly
+                print(f"  [Notice] Model request validation note: {err.message}")
+                print("  [Notice] Requesting direct answer from gathered observations...")
+                try:
+                    fallback_response = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=self.messages + [{
+                            "role": "user",
+                            "content": "Please answer the request directly based on the context above. Do not call any tools."
+                        }],
+                    )
+                    final_answer = fallback_response.choices[0].message.content or ""
+                    self.messages.append({"role": "assistant", "content": final_answer})
+                    return final_answer
+                except Exception as inner_err:
+                    return f"Agent stopped due to API error: {inner_err}"
+
             response_msg = response.choices[0].message
 
             # Check if LLM decided to call any tools
@@ -251,7 +303,7 @@ class SimpleAgent:
                             # Self-correction: return error so LLM can adapt
                             observation = f"Error executing {func_name}: {err}"
                     else:
-                        observation = f"Error: Tool '{func_name}' does not exist."
+                        observation = f"Error: Tool '{func_name}' does not exist. Available tools: {list(TOOL_MAP.keys())}"
 
                     print(f"  <- [Observation] {observation}")
 
@@ -304,14 +356,17 @@ def main():
     agent = SimpleAgent(client=client, model=model)
 
     print("=" * 60)
-    print("Downtown Places & Dining Concierge (Powered by Groq)")
+    print("AI Agent Prototype (Powered by Groq)")
     print(f"Model: {model}")
-    print(f"Search Tool: duckduckgo_search (Free Instant Answer + Web Search)")
+    print("Real & Free API Tools (via httpx):")
+    print("  1. get_weather            - Live global weather (Open-Meteo REST API)")
+    print("  2. get_wikipedia_summary  - Instant facts & places (Wikipedia REST API)")
+    print("  3. calculate              - Safe math & unit conversions")
     print("=" * 60)
-    print("Ask for recommendations with outdoor seating & great reviews, e.g.:")
-    print("  - 'Find a place near downtown Chicago with outdoor seating and great reviews.'")
-    print("  - 'What are top-rated brunch spots near downtown Austin with a patio?'")
-    print("  - 'Find cozy cafes near downtown Seattle with outdoor tables.'")
+    print("Try asking things like:")
+    print("  - 'What is the weather in Chicago right now, and what is that in Fahrenheit?'")
+    print("  - 'Tell me about Millennium Park and what the current weather is there.'")
+    print("  - 'If a hotel room in Tokyo costs 18,500 Yen per night for 4 nights, what is the total?'")
     print("Type 'exit' to quit.\n")
 
     while True:
