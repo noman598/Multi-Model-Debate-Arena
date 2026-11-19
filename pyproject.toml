@@ -7,6 +7,7 @@ requires-python = ">=3.13"
 dependencies = [
     "groq>=1.7.0",
     "httpx>=0.28.0",
+    "langsmith>=0.15.0",
     "openai>=3.51.0",
     "python-dotenv>=1.2.4",
     "rich>=15.0.0",

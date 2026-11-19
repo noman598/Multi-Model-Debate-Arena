@@ -12,5 +12,12 @@ wheels/
 # Environment files
 .env
 
+# SQLite local databases
+*.db
+*.db-journal
+
+# Operational log files
+*.log
+
 # Generated demo artifacts
 calculation_report.txt

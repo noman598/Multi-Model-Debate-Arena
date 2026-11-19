@@ -1,69 +1,112 @@
-# Fundamentals of Agentic AI (Powered by Groq)
+# Production-Grade Agentic AI: Memory, Telemetry & Loop Protection (Groq + SQLite)
 
-A simple, single-file prototype designed to teach **everything you need to know about Agentic AI** without frameworks like LangChain.
+A clean, modular Agentic AI system built in **pure Python** without framework bloat.
 
-Powered by **Groq** for near-instant inference and high-accuracy tool calling with open-weights models (`openai/gpt-oss-120b`).
-
-The entire system lives in a single file: **[`main.py`](file:///d:/dev/arena/main.py)** (~180 lines of well-commented Python).
-
----
-
-## ⚡ Why Groq for Agentic AI?
-
-1. **Ultra-Fast Inference**: Groq's LPUs process 250–300+ tokens/second. In an agentic loop where the agent might take 2–5 sequential steps, speed is the difference between waiting 15 seconds vs. 1 second.
-2. **Generous Free Tier**: Free API keys with ample rate limits for learning and prototyping.
-3. **Top-Tier Tool Calling**: `openai/gpt-oss-120b` accurately generates parallel tool calls and adheres to JSON schemas.
+Demonstrates **what really matters in production**:
+1. **Persistent & Compressed Memory**: SQLite storage + sliding-window rolling summaries.
+2. **4-Layer Infinite Loop Protection**: Defense-in-depth against repetitive tool calls.
+3. **Structured Telemetry & Auditing**: Latency measurement (ms), file logs (`agent_audit.log`), and SQLite audit trail.
 
 ---
 
-## 🧠 What Makes an AI "Agentic"?
-
-A standard chatbot is **passive**: it takes a prompt and produces text based only on static training data.
-
-An **AI Agent** is **active**:
-1. **Perceives**: Takes your goal and reviews its conversation memory.
-2. **Reasons**: Decides whether it has enough information or if it must interact with the world.
-3. **Acts**: Calls external tools (APIs, calculators, databases, code execution).
-4. **Observes**: Receives output from the tools.
-5. **Self-Corrects**: If a tool returns an error, the agent observes the failure and tries another approach.
-6. **Synthesizes**: Produces the final answer once the objective is met.
-
-This iterative loop is known as **ReAct (Reason + Act)**.
-
----
-
-## 🏛️ The 5 Fundamental Components of an AI Agent
+## 📂 Modular Architecture
 
 ```
-                      +-------------------+
-                      |    User Prompt    |
-                      +---------+---------+
-                                |
-                                v
-                      +-------------------+
-                      |   Agent Memory    | <------------------------+
-                      | (messages: list)  |                          |
-                      +---------+---------+                          |
-                                |                                    |
-                                v                                    |
-                       [ 1. REASONING ]                              |
-                       Calls Groq with                               |
-                      messages + tools                               |
-                                |                                    |
-            +-------------------+-------------------+                |
-            |                                       |                |
-   [ Tool Call Requested? ]                         |                |
-            | YES                                   | NO             |
-            v                                       v                |
-     [ 2. ACTING ]                           [ 4. SYNTHESIS ]        |
-   Execute matching Python                  Agent outputs final      |
-     function from TOOL_MAP                     answer               |
-            |                                                        |
-            v                                                        |
-    [ 3. OBSERVATION ]                                               |
-  Append tool output back                                            |
-   to Agent Memory --------------------------------------------------+
+arena/
+├── evals.py          # Automated 10-test benchmark suite (evaluates the 5 key metrics)
+├── langsmith_demo.py # Minimal, standalone LangSmith tracing demo
+├── logger.py         # Structured console + file logger (agent_audit.log)
+├── memory.py         # SQLite persistence + Sliding-Window Auto-Summarization + Audit Logs
+├── tools.py          # Live REST APIs with Layer 2 Actionable Return Guidance + LangSmith @traceable
+├── agent.py          # ReAct Engine with 4-Layer Loop Protection + LangSmith @traceable
+├── main.py           # Production CLI (< 130 lines) with 'audit', 'summary', 'history' commands
+├── pyproject.toml    # Project configuration and dependencies (including langsmith)
+└── .env              # Groq & LangSmith API configuration
 ```
+
+---
+
+## 🛡️ The 4-Layer Infinite Loop Protection
+
+When an agent gets stuck repeatedly calling the same tool with the same arguments, this 4-layer defense intercepts and recovers:
+
+```
+[Agent Tool Call Request]
+           │
+           ▼
+┌──────────────────────────────────────┐
+│ Layer 1: Code-Level Interceptor      │  Matches hash("tool:sorted_json_args").
+│ (agent.py)                           │  If duplicate: Intercepts & sends warning observation!
+└──────────────────┬───────────────────┘
+                   │ If new call -> Executes Tool
+                   ▼
+┌──────────────────────────────────────┐
+│ Layer 2: Actionable Tool Outputs     │  Tools NEVER return empty strings or blank 404s.
+│ (tools.py)                           │  Always returns explicit guidance: "Do not retry query X".
+└──────────────────┬───────────────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────┐
+│ Layer 3: System Prompt Constraints   │  Explicit negative constraints in system prompt:
+│ (agent.py)                           │  "Never retry identical failed queries."
+└──────────────────┬───────────────────┘
+                   │
+                   ▼ (If step >= max_steps)
+┌──────────────────────────────────────┐
+│ Layer 4: Hard Safety Floor           │  Forces `tool_choice="none"` to produce text.
+│ (agent.py)                           │  Guarantees zero runaway API loops.
+└──────────────────────────────────────┘
+```
+
+---
+
+## 🧠 The 3-Tier Memory Flow
+
+```
+ ┌─────────────────────────────────────────────────────────┐
+ │               1. LONG-TERM STORAGE (SQLite)             │
+ │  Complete, immutable log of every raw message ever sent │
+ │  Stored in `agent_memory.db` (survives restarts)        │
+ └────────────────────────────┬────────────────────────────┘
+                              │
+                    Trigger: > 6 turns
+                              │
+                              ▼
+ ┌─────────────────────────────────────────────────────────┐
+ │           2. COMPRESSED MEMORY (Auto-Summary)           │
+ │  Groq condenses older turns into an evolving paragraph: │
+ │  "User is Alice, lives in Chicago, planning Tokyo trip" │
+ └────────────────────────────┬────────────────────────────┘
+                              │
+                              ▼
+ ┌─────────────────────────────────────────────────────────┐
+ │            3. WORKING CONTEXT (Sent to Groq)            │
+ │  [System Prompt]                                        │
+ │  + [Recalled Summary of Past Conversation]              │
+ │  + [Only Latest 4 Raw Messages]                         │
+ └─────────────────────────────────────────────────────────┘
+```
+
+---
+
+## ⚡ Quickstart
+
+1. Activate your virtual environment:
+```powershell
+.venv\Scripts\Activate.ps1
+```
+
+2. Run the interactive production agent:
+```powershell
+python main.py
+```
+
+3. Production inspection commands during chat:
+* `audit`   - View operational telemetry table (latency in ms, duplicate intercepts).
+* `summary` - View active compressed session summary.
+* `history` - View raw SQLite conversation audit log.
+* `stats`   - View memory window bounds and message count.
+* `exit`    - Save and exit safely.
 
 ### 1. Tools (The Effectors)
 Regular Python functions in [`main.py`](file:///d:/dev/arena/main.py#L38-L150):
@@ -127,9 +170,39 @@ GROQ_MODEL=openai/gpt-oss-120b
 uv run python main.py
 ```
 
-### 3. Test Searching for Downtown Spots
-Try asking:
-> *"Find a place near downtown Austin with outdoor seating and great reviews."*
-> *"What are top-rated restaurants near downtown Chicago with a patio?"*
+---
 
-Watch the terminal as Groq calls `duckduckgo_search` to find real-world options, examines review highlights, and synthesizes a curated recommendation!
+## 🔍 LangSmith Tracing & Observability
+
+You can view full agent trajectories, token metrics, latency, and tool inputs/outputs in real-time in your LangSmith dashboard:
+
+1. Add your LangSmith key to `.env`:
+```env
+LANGSMITH_TRACING=true
+LANGSMITH_ENDPOINT="https://api.smith.langchain.com"
+LANGSMITH_API_KEY="lsv2_pt_your_key_here"
+LANGSMITH_PROJECT="agentic-arena"
+```
+
+2. Run the quickstart tracing demo:
+```powershell
+python langsmith_demo.py
+```
+
+3. Open your dashboard at [smith.langchain.com](https://smith.langchain.com) to view nested execution traces!
+
+---
+
+## 📊 Agent Evaluation Suite (`evals.py`)
+
+Run an automated 10-test benchmark suite evaluating the 5 key production metrics:
+1. **Final Answer Correctness**: Factual grounding & keyword matches.
+2. **Correct Tool Selection**: Verification that the right tool was selected (or zero tools for chit-chat).
+3. **Correct Trajectory**: Step efficiency & verification that `max_steps` was not exceeded.
+4. **Latency / Speed**: Execution duration under the benchmark threshold (< 6.5s).
+5. **Safety & Reliability**: Zero duplicate tool loops and clean error recovery.
+
+Run the evaluation suite:
+```powershell
+python evals.py
+```
