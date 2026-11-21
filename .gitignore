@@ -1,0 +1,28 @@
+# Environments & Virtualenv
+.venv/
+env/
+venv/
+ENV/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment & Secrets
+.env
+
+# Database & SQLite files
+*.db
+*.sqlite3
+auth_database.db
+
+# User Uploaded Photos
+uploads/originals/*
+uploads/thumbnails/*
+!uploads/originals/.gitkeep
+!uploads/thumbnails/.gitkeep
+
+# Operating System files
+.DS_Store
+Thumbs.db

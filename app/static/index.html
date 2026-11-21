@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FastAPI Auth & PicShare Prototype</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="container">
+    <h1>FastAPI PicShare Prototype</h1>
+    <p class="subtitle">JWT HttpOnly Cookies &bull; Redis Refresh Token &bull; Photo Upload &amp; 200x200 Thumbnails</p>
+    <hr>
+
+    <!-- Session Status Bar -->
+    <div class="status-bar">
+      <strong>Session Status: </strong>
+      <span id="session-status">Checking...</span>
+      <span id="redis-status" class="muted"></span>
+    </div>
+
+    <!-- Forms Row (Auth) -->
+    <div class="row" id="auth-forms">
+      <!-- Signup Form -->
+      <div class="col">
+        <h3>1. Sign Up</h3>
+        <form id="signup-form" onsubmit="handleSignup(event)">
+          <div class="field">
+            <label for="signup-username">Username:</label>
+            <input type="text" id="signup-username" required placeholder="e.g. john">
+          </div>
+          <div class="field">
+            <label for="signup-email">Email:</label>
+            <input type="email" id="signup-email" required placeholder="john@example.com">
+          </div>
+          <div class="field">
+            <label for="signup-fullname">Full Name (Optional):</label>
+            <input type="text" id="signup-fullname" placeholder="John Doe">
+          </div>
+          <div class="field">
+            <label for="signup-password">Password:</label>
+            <input type="password" id="signup-password" minlength="6" required placeholder="Min 6 chars">
+          </div>
+          <button type="submit">Sign Up</button>
+        </form>
+      </div>
+
+      <!-- Login Form -->
+      <div class="col">
+        <h3>2. Log In</h3>
+        <form id="login-form" onsubmit="handleLogin(event)">
+          <div class="field">
+            <label for="login-username">Username or Email:</label>
+            <input type="text" id="login-username" required placeholder="Username or email">
+          </div>
+          <div class="field">
+            <label for="login-password">Password:</label>
+            <input type="password" id="login-password" required placeholder="Password">
+          </div>
+          <button type="submit">Log In</button>
+        </form>
+      </div>
+    </div>
+
+    <hr>
+
+    <!-- PICSHARE PHOTO GALLERY SECTION -->
+    <div class="gallery-section">
+      <h3>📸 PicShare Photo Gallery</h3>
+      <p class="muted">Upload JPG/PNG images (max 5 MB). The server generates a 200x200 thumbnail and prints a notification.</p>
+
+      <!-- Upload Form -->
+      <form id="upload-form" onsubmit="handleUploadPhoto(event)" class="upload-box">
+        <label for="photo-file">Select an image to upload:</label>
+        <div class="upload-controls">
+          <input type="file" id="photo-file" accept=".jpg,.jpeg,.png" required>
+          <button type="submit" id="btn-upload">Upload Photo</button>
+        </div>
+      </form>
+
+      <!-- Photos Grid -->
+      <div id="photos-container">
+        <p class="muted" id="photos-hint">Please log in to view and upload your photos.</p>
+        <div id="photos-grid" class="photos-grid"></div>
+      </div>
+    </div>
+
+    <hr>
+
+    <!-- API Actions -->
+    <div class="actions">
+      <h3>3. Authenticated Actions</h3>
+      <p class="muted">The browser automatically sends the HttpOnly cookies with each request.</p>
+      <div class="btn-group">
+        <button type="button" onclick="handleGetProfile()">Get Profile (GET /api/auth/me)</button>
+        <button type="button" onclick="handleRefreshToken()">Refresh Token (POST /api/auth/refresh)</button>
+        <button type="button" onclick="loadPhotos()">Refresh Gallery (GET /api/photos)</button>
+        <button type="button" onclick="checkStatus()">Check Session (GET /api/auth/status)</button>
+        <button type="button" class="btn-danger" onclick="handleLogout()">Log Out (POST /api/auth/logout)</button>
+        <button type="button" class="btn-secondary" onclick="clearOutput()">Clear Output</button>
+      </div>
+    </div>
+
+    <hr>
+
+    <!-- Server Response Output Box -->
+    <div class="output-section">
+      <h3>Server Response:</h3>
+      <div id="output-meta" class="muted">No requests sent yet.</div>
+      <pre id="output-box">Press any button or submit a form to see the server response here.</pre>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

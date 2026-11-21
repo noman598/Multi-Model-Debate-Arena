@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+auth_database.db
+uploads/*
+demo/
+.git/
+.gitignore

@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    container_name: picshare_web
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/picshare
+      - REDIS_URL=redis://redis:6379/0
+      - USE_REAL_REDIS=True
+      - SECRET_KEY=supersecretjwtkeyforauthenticationpleasereplaceinproduction1234567890
+      - UPLOAD_DIR=uploads
+    volumes:
+      - picshare_uploads:/app/uploads
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: picshare_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: picshare
+    ports:
+      - "5432:5432"
+    volumes:
+      - picshare_pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: picshare_redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+volumes:
+  picshare_pgdata:
+  picshare_uploads:

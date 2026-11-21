@@ -1,0 +1,246 @@
+/* Simple beige prototype styling with PicShare gallery */
+body {
+  font-family: Arial, sans-serif;
+  background-color: #f5f2eb; /* Warm beige */
+  color: #222222;
+  margin: 0;
+  padding: 24px;
+  line-height: 1.5;
+}
+
+.container {
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+h1 {
+  font-size: 24px;
+  margin-bottom: 4px;
+}
+
+h3 {
+  font-size: 18px;
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+
+.subtitle {
+  color: #666666;
+  font-size: 14px;
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+
+.muted {
+  color: #777777;
+  font-size: 13px;
+}
+
+hr {
+  border: none;
+  border-top: 1px solid #ded8cb;
+  margin: 20px 0;
+}
+
+/* Status Bar */
+.status-bar {
+  background-color: #ede8df;
+  border: 1px solid #ded8cb;
+  padding: 10px 14px;
+  border-radius: 4px;
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+
+/* 2-Column Layout for Forms */
+.row {
+  display: flex;
+  gap: 24px;
+}
+
+.col {
+  flex: 1;
+  background-color: #ede8df;
+  border: 1px solid #ded8cb;
+  border-radius: 4px;
+  padding: 16px;
+}
+
+@media (max-width: 600px) {
+  .row {
+    flex-direction: column;
+  }
+}
+
+/* Forms & Fields */
+.field {
+  margin-bottom: 12px;
+}
+
+label {
+  display: block;
+  font-size: 13px;
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+input[type="text"],
+input[type="email"],
+input[type="password"] {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid #cccccc;
+  border-radius: 3px;
+  font-size: 14px;
+  background-color: #ffffff;
+}
+
+input:focus {
+  outline: none;
+  border-color: #0066cc;
+}
+
+/* Buttons */
+button {
+  background-color: #0066cc;
+  color: #ffffff;
+  border: 1px solid #0055aa;
+  padding: 8px 14px;
+  font-size: 14px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+button:hover {
+  background-color: #0055aa;
+}
+
+.btn-secondary {
+  background-color: #666666;
+  border-color: #555555;
+}
+
+.btn-secondary:hover {
+  background-color: #555555;
+}
+
+.btn-danger {
+  background-color: #cc0000;
+  border-color: #aa0000;
+}
+
+.btn-danger:hover {
+  background-color: #aa0000;
+}
+
+.btn-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* Gallery Section */
+.gallery-section {
+  background-color: #ede8df;
+  border: 1px solid #ded8cb;
+  border-radius: 4px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.upload-box {
+  background-color: #f5f2eb;
+  border: 1px solid #ded8cb;
+  padding: 12px;
+  border-radius: 4px;
+  margin-bottom: 16px;
+}
+
+.upload-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.upload-controls input[type="file"] {
+  background: #ffffff;
+  padding: 6px;
+  border: 1px solid #cccccc;
+  border-radius: 3px;
+  font-size: 13px;
+}
+
+.photos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 16px;
+  margin-top: 14px;
+}
+
+.photo-card {
+  background: #ffffff;
+  border: 1px solid #ded8cb;
+  border-radius: 4px;
+  padding: 10px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.photo-card img {
+  width: 200px;
+  height: 200px;
+  object-fit: cover;
+  border-radius: 3px;
+  border: 1px solid #eeeeee;
+  display: block;
+  margin: 0 auto 8px;
+  cursor: pointer;
+}
+
+.photo-meta {
+  font-size: 11px;
+  color: #777777;
+  margin-bottom: 8px;
+}
+
+.photo-card .btn-delete {
+  background-color: #cc0000;
+  color: #ffffff;
+  border: none;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 3px;
+}
+
+.photo-card .btn-delete:hover {
+  background-color: #990000;
+}
+
+/* Response Output Box */
+.output-section {
+  margin-top: 16px;
+}
+
+#output-meta {
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-family: monospace;
+}
+
+#output-box {
+  background-color: #ede8df;
+  border: 1px solid #ded8cb;
+  border-radius: 4px;
+  padding: 14px;
+  font-family: Consolas, monospace;
+  font-size: 13px;
+  color: #111111;
+  white-space: pre-wrap;
+  word-break: break-all;
+  min-height: 120px;
+  max-height: 350px;
+  overflow-y: auto;
+}
