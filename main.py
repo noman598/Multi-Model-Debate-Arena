@@ -23,9 +23,10 @@ load_dotenv()
 
 def print_banner(session_id: str, memory: SQLiteMemory, model: str):
     print("=" * 68)
-    print("Production Agentic AI (Powered by Groq, SQLite & 4-Layer Loop Guard)")
+    print("Production Agentic AI (Groq + SQLite + 4-Layer Loop Guard + HITL)")
     print(f"Model: {model}")
     print(f"Session: '{session_id}' | Audit Log: agent_audit.log | Database: agent_memory.db")
+    print("Human-in-the-Loop: ACTIVE (Critical tools require supervisor approval)")
     print("=" * 68)
 
     summary = memory.get_summary(session_id)
@@ -64,6 +65,59 @@ def display_audit_table(events):
     print("=" * 80 + "\n")
 
 
+def cli_approval_handler(
+    session_id: str, tool_name: str, tool_args: dict
+) -> tuple[bool, str | None]:
+    """
+    Interactive terminal prompt for Human-in-the-Loop (HITL) approval.
+    Interprets operator approval/rejection before high-risk tools run.
+    """
+    print("\n" + "=" * 72)
+    print("⚠️  HUMAN-IN-THE-LOOP (HITL) APPROVAL REQUIRED")
+    print("=" * 72)
+    print(f"Action:      {tool_name} (High-Risk Operation)")
+    print(f"Session:     {session_id}")
+    print("Parameters:")
+    for k, v in tool_args.items():
+        print(f"  • {k}: {v}")
+    print("-" * 72)
+    print("An automated agent cannot execute this action without your authorization.")
+    print("Options:")
+    print("  [y] / [yes]            - Approve and execute")
+    print("  [n] / [no]             - Reject execution")
+    print("  reject <custom reason> - Reject with custom explanation")
+    print("-" * 72)
+
+    while True:
+        try:
+            choice = input("Authorize action? (y/n) > ").strip()
+        except (KeyboardInterrupt, EOFError):
+            print("\nOperation cancelled by operator.")
+            return False, "Prompt cancelled by operator."
+
+        if not choice:
+            continue
+
+        lower = choice.lower()
+        if lower in ("y", "yes"):
+            print(">>> ✅ Action APPROVED by supervisor.\n")
+            return True, None
+        elif lower in ("n", "no"):
+            try:
+                reason = input("Optional rejection reason (or press Enter for default) > ").strip()
+            except (KeyboardInterrupt, EOFError):
+                reason = ""
+            reason = reason if reason else "Declined by operator via interactive prompt."
+            print(f">>> ❌ Action REJECTED by supervisor: {reason}\n")
+            return False, reason
+        elif lower.startswith("reject"):
+            reason = choice[6:].strip() or "Declined by operator."
+            print(f">>> ❌ Action REJECTED by supervisor: {reason}\n")
+            return False, reason
+        else:
+            print("Invalid input. Please enter 'y' to approve or 'n' to reject.")
+
+
 def main():
     api_key = os.getenv("GROQ_API_KEY")
     model = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
@@ -96,13 +150,14 @@ def main():
         return
     session_id = session_input if session_input else "default"
 
-    # Instantiate production ReAct agent
+    # Instantiate production ReAct agent with HITL approval gate
     agent = ReActAgent(
         client=client,
         memory=memory,
         tools=TOOL_MAP,
         tool_schemas=TOOL_SCHEMAS,
         model=model,
+        approval_handler=cli_approval_handler,
     )
 
     print_banner(session_id, memory, model)

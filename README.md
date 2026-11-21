@@ -1,11 +1,12 @@
-# Production-Grade Agentic AI: Memory, Telemetry & Loop Protection (Groq + SQLite)
+# Production-Grade Agentic AI: Memory, Telemetry, Loop Guard & HITL (Groq + SQLite)
 
 A clean, modular Agentic AI system built in **pure Python** without framework bloat.
 
 Demonstrates **what really matters in production**:
 1. **Persistent & Compressed Memory**: SQLite storage + sliding-window rolling summaries.
 2. **4-Layer Infinite Loop Protection**: Defense-in-depth against repetitive tool calls.
-3. **Structured Telemetry & Auditing**: Latency measurement (ms), file logs (`agent_audit.log`), and SQLite audit trail.
+3. **Human-in-the-Loop (HITL) Approval Gate**: Deterministic supervisor authorization for high-risk mutating actions (`execute_refund`).
+4. **Structured Telemetry & Auditing**: Latency measurement (ms), file logs (`agent_audit.log`), and SQLite audit trail.
 
 ---
 
@@ -13,20 +14,36 @@ Demonstrates **what really matters in production**:
 
 ```
 arena/
-├── evals.py          # Automated 10-test benchmark suite (evaluates the 5 key metrics)
-├── langsmith_demo.py # Minimal, standalone LangSmith tracing demo
-├── logger.py         # Structured console + file logger (agent_audit.log)
-├── memory.py         # SQLite persistence + Sliding-Window Auto-Summarization + Audit Logs
-├── tools.py          # Live REST APIs with Layer 2 Actionable Return Guidance + LangSmith @traceable
-├── agent.py          # ReAct Engine with 4-Layer Loop Protection + LangSmith @traceable
-├── main.py           # Production CLI (< 130 lines) with 'audit', 'summary', 'history' commands
-├── pyproject.toml    # Project configuration and dependencies (including langsmith)
-└── .env              # Groq & LangSmith API configuration
+├── test_hitl.py       # Unit & integration tests for Human-in-the-Loop approval workflows
+├── evals.py           # Automated 10-test benchmark suite (evaluates the 5 key metrics)
+├── langsmith_demo.py  # Minimal, standalone LangSmith tracing demo
+├── logger.py          # Structured console + file logger (agent_audit.log)
+├── memory.py          # SQLite persistence + Sliding-Window Auto-Summarization + Audit Logs
+├── tools.py           # REST APIs + High-Risk Action (execute_refund) + HITL Registry + @traceable
+├── agent.py           # ReAct Engine with 4-Layer Loop Protection + HITL Gate + @traceable
+├── main.py            # Production CLI with interactive HITL prompt & telemetry viewer
+├── pyproject.toml     # Project configuration and dependencies (including langsmith)
+└── .env               # Groq & LangSmith API configuration
 ```
 
 ---
 
-## 🛡️ The 4-Layer Infinite Loop Protection
+## 🔒 Security Guardrails: Prompt Injection & Memory Poisoning Defense
+
+Implemented using pure Python + structural prompt boundaries (zero framework bloat):
+
+1. **Direct Prompt Injection Defense:**
+   - Raw user inputs are strictly encapsulated in `<user_query>` tags.
+   - The System Prompt explicitly defines the authority hierarchy: `<user_query>` is strictly passive data, never executable instructions.
+   - Pre-flight heuristic scanner logs `INJECTION_ATTEMPT_FLAGGED` in the audit telemetry.
+
+2. **Indirect Prompt Injection Defense (Third-Party Tools):**
+   - Tool observations (from Wikipedia or weather APIs) are encapsulated in `<untrusted_tool_data>` tags.
+   - The System Prompt instructs the agent to treat third-party tool text as reference material to be read, never commands to execute.
+
+3. **Context & Memory Poisoning Defense:**
+   - The rolling auto-summarizer in [`memory.py`](file:///d:/dev/arena/memory.py) enforces strict anti-poisoning rules: it extracts only user preferences and **discards administrative claims or system instruction overrides**.
+   - Recalled memory is enclosed in `<recalled_memory>` and demoted below the core system rules so past turns can never hijack agent behavior.
 
 When an agent gets stuck repeatedly calling the same tool with the same arguments, this 4-layer defense intercepts and recovers:
 
@@ -60,7 +77,44 @@ When an agent gets stuck repeatedly calling the same tool with the same argument
 
 ---
 
-## 🧠 The 3-Tier Memory Flow
+## 🛡️ Human-in-the-Loop (HITL) Approval Gate
+
+In production, agents cannot be allowed to execute irreversible, high-risk mutating actions (financial refunds, email dispatch, data deletion) autonomously. 
+
+```
+[Agent Selects Tool: execute_refund]
+                 │
+                 ▼
+     Is Tool in CRITICAL_TOOLS?
+     (requires_approval == True)
+        │                 │
+        │ YES             │ NO (Read-only tool like get_weather)
+        ▼                 ▼
+┌─────────────────┐  [Execute Tool Autonomously]
+│ 1. Log to DB:   │
+│ APPROVAL_       │
+│ REQUESTED       │
+└───────┬─────────┘
+        ▼
+┌────────────────────────────────────────────────────────┐
+│ 2. Supervisor Prompt / Approval Callback                │
+│    Shows: tool name, arguments, risk level             │
+└───────┬────────────────────────────────────────────────┘
+        │
+   ┌────┴──────────────────────────┐
+   ▼                               ▼
+[APPROVED]                     [REJECTED]
+   │                               │
+   ├─► Log: APPROVAL_GRANTED       ├─► Log: APPROVAL_REJECTED
+   ├─► Execute Tool                ├─► DO NOT Execute Tool!
+   └─► Feed Result to Model        └─► Feed Rejection Guidance to Model
+                                       (Model politely informs user)
+```
+
+### Key Architectural Guarantees:
+1. **Deterministic Enforcement:** Handled directly in Python code ([`agent.py`](file:///d:/dev/arena/agent.py)). Even if an attacker jailbreaks the system prompt, the Python runtime strictly blocks execution without supervisor sign-off.
+2. **Immutable Audit Trail:** All approval lifecycle events (`APPROVAL_REQUESTED`, `APPROVAL_GRANTED`, `APPROVAL_REJECTED`) are persisted to SQLite `audit_logs`.
+3. **Graceful Agent Recovery:** When rejected, the agent receives an actionable denial observation and informs the user rather than crashing or getting stuck.
 
 ```
  ┌─────────────────────────────────────────────────────────┐

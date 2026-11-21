@@ -165,10 +165,56 @@ def calculate(expression: str) -> str:
         )
 
 
+@traceable(run_type="tool", name="execute_refund")
+def execute_refund(order_id: str, amount: float, reason: str) -> str:
+    """
+    Execute a financial refund for a customer order.
+    CRITICAL: This tool performs real financial debits and ledger updates.
+    It requires explicit Human-in-the-Loop (HITL) supervisor approval before running.
+    """
+    clean_order = order_id.strip().upper()
+    try:
+        amt = float(amount)
+    except (ValueError, TypeError):
+        return f"Error: Invalid amount '{amount}'. Guidance: Amount must be a positive numeric value."
+
+    if amt <= 0:
+        return f"Error: Refund amount ${amt:.2f} must be greater than $0.00. Guidance: Ask the user for the valid refund amount."
+
+    if not clean_order:
+        return "Error: Order ID cannot be empty. Guidance: Ask the user for the Order ID (e.g., ORD-12345)."
+
+    # Deterministic simulation of order refund processing
+    txn_ref = f"REF-{abs(hash(clean_order + str(amt))) % 1000000:06d}"
+    return (
+        f"SUCCESS [Refund Processed]:\n"
+        f"- Order ID: {clean_order}\n"
+        f"- Refund Amount: ${amt:.2f}\n"
+        f"- Reason: {reason.strip()}\n"
+        f"- Transaction Reference: {txn_ref}\n"
+        f"- Status: Settled. Customer ledger credited."
+    )
+
+
+# =============================================================================
+# TOOL REGISTRY & HUMAN-IN-THE-LOOP (HITL) CLASSIFICATION
+# =============================================================================
+
+# Tools classified by operational risk. Tools with requires_approval=True
+# can NEVER be executed autonomously by the agent without human sign-off.
+CRITICAL_TOOLS: Dict[str, Dict[str, Any]] = {
+    "execute_refund": {
+        "risk_level": "HIGH",
+        "requires_approval": True,
+        "description": "Financial operation: transfers or refunds money to a customer order.",
+    }
+}
+
 TOOL_MAP: Dict[str, Any] = {
     "get_weather": get_weather,
     "get_wikipedia_summary": get_wikipedia_summary,
     "calculate": calculate,
+    "execute_refund": execute_refund,
 }
 
 TOOL_SCHEMAS: List[Dict[str, Any]] = [
@@ -220,6 +266,31 @@ TOOL_SCHEMAS: List[Dict[str, Any]] = [
                     }
                 },
                 "required": ["expression"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "execute_refund",
+            "description": "Process a financial refund for a customer order. HIGH-RISK ACTION: requires human supervisor approval before execution.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "order_id": {
+                        "type": "string",
+                        "description": "The unique customer order identifier (e.g. 'ORD-94821').",
+                    },
+                    "amount": {
+                        "type": "number",
+                        "description": "The total amount in dollars to refund (e.g. 89.99).",
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "The customer's reason for requesting the refund.",
+                    },
+                },
+                "required": ["order_id", "amount", "reason"],
             },
         },
     },
