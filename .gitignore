@@ -3,7 +3,7 @@
 env/
 venv/
 ENV/
-
+picshare-key.pem
 # Python caches
 __pycache__/
 *.py[cod]

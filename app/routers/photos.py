@@ -7,7 +7,7 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import Photo, User
 from app.notifications import send_photo_notification
-from app.storage import delete_file, save_file
+from app.storage import delete_file, get_signed_url, save_file
 from app.thumbnails import generate_thumbnail
 
 router = APIRouter(prefix="/api/photos", tags=["Photos"])
@@ -18,7 +18,10 @@ def get_user_photos(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Returns all photos and thumbnail URLs for the authenticated user."""
+    """
+    Returns all photos for the authenticated user.
+    Uses AWS S3 Pre-signed URLs for both original and thumbnail images.
+    """
     photos = db.query(Photo).filter(
         Photo.user_id == current_user.id
     ).order_by(Photo.created_at.desc()).all()
@@ -28,8 +31,8 @@ def get_user_photos(
             "id": p.id,
             "filename": p.filename,
             "thumbnail_filename": p.thumbnail_filename,
-            "original_url": f"/uploads/originals/{p.filename}",
-            "thumbnail_url": f"/uploads/thumbnails/{p.thumbnail_filename}",
+            "original_url": get_signed_url(p.filename, folder="originals"),
+            "thumbnail_url": get_signed_url(p.thumbnail_filename, folder="thumbnails"),
             "created_at": p.created_at.isoformat()
         }
         for p in photos
@@ -45,9 +48,9 @@ async def upload_photo(
     """
     Uploads a photo for the authenticated user:
     1. Validates extension (JPG/PNG) and size (max 5 MB)
-    2. Saves original via storage abstraction (S3-ready)
-    3. Generates 200x200 thumbnail via standalone function (Lambda-ready)
-    4. Triggers notification (SNS-ready)
+    2. Uploads original and 200x200 thumbnail to S3 (or local disk)
+    3. Saves record in database
+    4. Returns S3 pre-signed URLs
     """
     # 1. Validate file extension
     ext = Path(file.filename or "").suffix.lower()
@@ -70,7 +73,7 @@ async def upload_photo(
     filename = f"{uid}{ext}"
     thumb_filename = f"thumb_{uid}.jpg"
 
-    # 4. Save original and generate thumbnail
+    # 4. Save original and generate thumbnail to S3/local
     save_file(contents, filename, folder="originals")
     thumb_bytes = generate_thumbnail(contents, size=(200, 200))
     save_file(thumb_bytes, thumb_filename, folder="thumbnails")
@@ -93,8 +96,8 @@ async def upload_photo(
         "photo": {
             "id": photo.id,
             "filename": photo.filename,
-            "original_url": f"/uploads/originals/{photo.filename}",
-            "thumbnail_url": f"/uploads/thumbnails/{photo.thumbnail_filename}",
+            "original_url": get_signed_url(photo.filename, folder="originals"),
+            "thumbnail_url": get_signed_url(photo.thumbnail_filename, folder="thumbnails"),
             "created_at": photo.created_at.isoformat()
         }
     }
@@ -106,7 +109,7 @@ def delete_user_photo(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Deletes photo and thumbnail from storage and removes the database record."""
+    """Deletes photo and thumbnail from S3/storage and removes the database record."""
     photo = db.query(Photo).filter(
         Photo.id == photo_id,
         Photo.user_id == current_user.id
@@ -118,7 +121,7 @@ def delete_user_photo(
             detail="Photo not found or you do not have permission to delete it"
         )
 
-    # Delete files from storage
+    # Delete files from S3/storage
     delete_file(photo.filename, folder="originals")
     delete_file(photo.thumbnail_filename, folder="thumbnails")
 
